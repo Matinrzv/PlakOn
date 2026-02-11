@@ -4,5 +4,5 @@ Pillow==10.1.0
 ultralytics==8.0.135
 hezar==0.6.7
 pyodbc==4.0.40
-PyQt5==5.15.9
+PyQt6==6.5.3
 psutil==5.9.6

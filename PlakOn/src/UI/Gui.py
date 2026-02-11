@@ -1,18 +1,25 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout
-
-def on_click():
-    label.setText("clicked!")
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton, QWidget, QVBoxLayout, QStatusBar)
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("PlakOn Professional")
+        self.resize(800,500)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        self.label = QLabel("سیستم آماده است")
+        self.button = QPushButton("شروع پردازش...")
+        self.button.clicked.connect(self.on_click)
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        layout.addWidget(self.button)
+        central_widget.setLayout(layout)
+        self.setStatusBar(QStatusBar(self))
+        self.statusBar().showMessage("آماده!")
+    def on_click(self):
+        self.label.setText("درحال پردازش پلاک...")
+        self.statusBar().showMessage("پردازش شروع شد")
 app = QApplication(sys.argv)
-window = QWidget()
-window.setWindowTitle("PlakOn")
-window.resize(400,300)
-label = QLabel("Wellcome To PlakOn!",window)
-button = QPushButton("click me",window)
-layout = QVBoxLayout()
-layout.addWidget(label)
-layout.addWidget(button)
-window.setLayout(layout)
-button.clicked.connect(on_click)
+window = MainWindow()
 window.show()
-sys.exit(app.exec())
+sys.exit(app.exec())         

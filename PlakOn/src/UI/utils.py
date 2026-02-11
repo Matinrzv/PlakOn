@@ -12,9 +12,6 @@ def load_models(
     yolo_model_path="models/lp_detector.pt",
     ocr_model_path="hezarai/crnn-fa-64x256-license-plate-recognition"
 ):
-    """
-    بارگذاری YOLO و OCR مدل‌ها (یکبار در طول اجرای برنامه)
-    """
     global _lp_detector, _lp_ocr
 
     if _lp_detector is None:
@@ -38,9 +35,6 @@ def normalize_plate(text: str) -> str:
     return text.strip()
 
 def format_iran_plate_simple(text: str) -> str:
-    """
-    خروجی OCR را به شکل ساده و بدون اسلش: '32ایران67632ب'
-    """
     t = "".join(c for c in text if c.isalnum())
     if len(t) < 7:
         return "نامشخص"
@@ -50,10 +44,6 @@ def format_iran_plate_simple(text: str) -> str:
     return f"{first}ایران{number}{letter}"
 
 def detect_plate_and_ocr(image_bgr):
-    """
-    ورودی: تصویر OpenCV (BGR)
-    خروجی: (plate_text, plate_crop, bbox)
-    """
     detector, ocr = load_models()
     result = detector(image_bgr)[0]
 
