@@ -3,6 +3,7 @@
 from ultralytics import YOLO
 from hezar.models import Model
 import cv2
+import re
 from PyQt6.QtGui import QImage
 
 _lp_detector = None
@@ -35,13 +36,67 @@ def normalize_plate(text: str) -> str:
     return text.strip()
 
 def format_iran_plate_simple(text: str) -> str:
-    t = "".join(c for c in text if c.isalnum())
-    if len(t) < 7:
+    t = normalize_plate(text)
+    if not t:
         return "نامشخص"
-    first = t[:2]
-    letter = t[2]
-    number = t[3:]
-    return f"{first}ایران{number}{letter}"
+
+    # حذف نویزهای رایج OCR
+    t = t.replace("ایران", "").replace("IRAN", "").replace("Iran", "")
+    t = t.replace("الف", "ا")
+    t = re.sub(r"[\s\-_./|]+", "", t)
+
+    # فقط اعداد و حروف فارسی/لاتین را نگه می‌داریم
+    cleaned = "".join(ch for ch in t if ch.isdigit() or ("\u0600" <= ch <= "\u06FF") or ch.isalpha())
+    if not cleaned:
+        return "نامشخص"
+
+    # بهترین حالت: یک حرف فارسی وسط و قبل/بعد آن ارقام کافی
+    def _is_persian_letter(ch: str) -> bool:
+        return ("\u0600" <= ch <= "\u06FF") and ch.isalpha() and not ch.isdigit()
+
+    letter_candidates = [i for i, ch in enumerate(cleaned) if _is_persian_letter(ch)]
+    if not letter_candidates:
+        letter_candidates = [i for i, ch in enumerate(cleaned) if ch.isalpha() and not ch.isdigit()]
+
+    letter_idx = -1
+    for idx in letter_candidates:
+        before_digits = "".join(ch for ch in cleaned[:idx] if ch.isdigit())
+        after_digits = "".join(ch for ch in cleaned[idx + 1:] if ch.isdigit())
+        if len(before_digits) >= 2 and len(after_digits) >= 5:
+            letter_idx = idx
+            break
+    if letter_idx == -1 and letter_candidates:
+        letter_idx = letter_candidates[0]
+
+    if letter_idx != -1:
+        before_digits = "".join(ch for ch in cleaned[:letter_idx] if ch.isdigit())
+        after_digits = "".join(ch for ch in cleaned[letter_idx + 1:] if ch.isdigit())
+        letter = cleaned[letter_idx]
+
+        # الگوی متداول: 2 رقم + حرف + 3 رقم + 2 رقم
+        if len(before_digits) >= 2 and len(after_digits) >= 5:
+            left2 = before_digits[-2:]
+            middle3 = after_digits[:3]
+            right2 = after_digits[3:5]
+            return f"{left2} {letter} {middle3} ایران {right2}"
+
+        # حالت جایگزین OCR: 5 رقم + حرف + 2 رقم
+        if len(before_digits) >= 5 and len(after_digits) >= 2:
+            left2 = before_digits[:2]
+            middle3 = before_digits[2:5]
+            right2 = after_digits[:2]
+            return f"{left2} {letter} {middle3} ایران {right2}"
+
+    # fallback: با فرض 7 رقم و یک حرف
+    digits = "".join(ch for ch in cleaned if ch.isdigit())
+    letters = "".join(ch for ch in cleaned if ch.isalpha() and not ch.isdigit())
+    if len(digits) >= 7 and letters:
+        left2 = digits[:2]
+        middle3 = digits[2:5]
+        right2 = digits[5:7]
+        return f"{left2} {letters[0]} {middle3} ایران {right2}"
+
+    return "نامشخص"
 
 def detect_plate_and_ocr(image_bgr):
     detector, ocr = load_models()
