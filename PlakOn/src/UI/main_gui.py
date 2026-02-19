@@ -51,9 +51,21 @@ class PlakOnGUI(QMainWindow):
         self.next_btn.clicked.connect(self.show_next_image)
         self.next_btn.setStyleSheet("font-size: 16px; padding: 8px;")
 
+        self.stream_btn = QPushButton("شروع استریم")
+        self.stream_btn.clicked.connect(self.toggle_stream)
+        self.stream_btn.setStyleSheet("font-size: 16px; padding: 8px;")
+
+        self.stream_active = False
+        self.cap = None
+        self.stream_timer = QTimer()
+        self.stream_timer.timeout.connect(self.update_stream_frame)
+
         left_layout = QVBoxLayout()
         left_layout.addWidget(self.image_label)
-        left_layout.addWidget(self.next_btn)
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(self.next_btn)
+        buttons_layout.addWidget(self.stream_btn)
+        left_layout.addLayout(buttons_layout)
 
         right_layout = QVBoxLayout()
         right_layout.addWidget(self.plate_crop_label)
@@ -78,19 +90,7 @@ class PlakOnGUI(QMainWindow):
 
         self.show_next_image()
 
-    def show_next_image(self):
-        if not self.image_files:
-            return
-        if self.current_index >= len(self.image_files):
-            self.current_index = 0
-
-        image_path = os.path.join(self.images_folder, self.image_files[self.current_index])
-        img = cv2.imread(image_path)
-        if img is None:
-            print(f"❌ تصویر {self.image_files[self.current_index]} یافت نشد.")
-            self.current_index += 1
-            return
-
+    def _detect_and_render(self, img):
         plate_text = "-"
         plate_cropped = None
 
@@ -109,7 +109,8 @@ class PlakOnGUI(QMainWindow):
                     plate_text = ocr_result.text
 
                 plate_text = format_iran_plate_simple(plate_text)
-                self.plate_text_label.setText(f"پلاک: {plate_text}")
+
+        self.plate_text_label.setText(f"پلاک: {plate_text}")
 
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w, ch = img_rgb.shape
@@ -118,7 +119,7 @@ class PlakOnGUI(QMainWindow):
             self.image_label.width(), self.image_label.height(), Qt.AspectRatioMode.KeepAspectRatio
         ))
 
-        if plate_cropped is not None:
+        if plate_cropped is not None and plate_cropped.size > 0:
             crop_rgb = cv2.cvtColor(plate_cropped, cv2.COLOR_BGR2RGB)
             h, w, ch = crop_rgb.shape
             qt_crop = QImage(crop_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
@@ -128,7 +129,60 @@ class PlakOnGUI(QMainWindow):
         else:
             self.plate_crop_label.clear()
 
+    def show_next_image(self):
+        if self.stream_active:
+            return
+        if not self.image_files:
+            return
+        if self.current_index >= len(self.image_files):
+            self.current_index = 0
+
+        image_path = os.path.join(self.images_folder, self.image_files[self.current_index])
+        img = cv2.imread(image_path)
+        if img is None:
+            print(f"❌ تصویر {self.image_files[self.current_index]} یافت نشد.")
+            self.current_index += 1
+            return
+
+        self._detect_and_render(img)
+
         self.current_index += 1
+
+    def toggle_stream(self):
+        if not self.stream_active:
+            self.cap = cv2.VideoCapture(0)
+            if not self.cap.isOpened():
+                self.plate_text_label.setText("پلاک: دوربین در دسترس نیست")
+                self.cap = None
+                return
+            self.stream_active = True
+            self.stream_btn.setText("توقف استریم")
+            self.next_btn.setEnabled(False)
+            self.stream_timer.start(60)
+        else:
+            self.stop_stream()
+
+    def update_stream_frame(self):
+        if not self.stream_active or self.cap is None:
+            return
+        ok, frame = self.cap.read()
+        if not ok or frame is None:
+            self.plate_text_label.setText("پلاک: خطا در دریافت فریم")
+            return
+        self._detect_and_render(frame)
+
+    def stop_stream(self):
+        self.stream_active = False
+        self.stream_timer.stop()
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+        self.stream_btn.setText("شروع استریم")
+        self.next_btn.setEnabled(True)
+
+    def closeEvent(self, event):
+        self.stop_stream()
+        super().closeEvent(event)
 
     def update_system_stats(self):
         cpu = psutil.cpu_percent()
