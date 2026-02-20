@@ -2,26 +2,50 @@
 
 from ultralytics import YOLO
 from hezar.models import Model
+from hezar.preprocessors import ImageProcessor, ImageProcessorConfig
+from hezar.preprocessors.preprocessor import PreprocessorsContainer
 import cv2
 import re
+from pathlib import Path
 from PyQt6.QtGui import QImage
 
 _lp_detector = None
 _lp_ocr = None
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_YOLO_MODEL_PATH = PROJECT_ROOT / "models" / "lp_detector.pt"
+DEFAULT_OCR_MODEL_PATH = PROJECT_ROOT / "models" / "crnn-fa-64x256-license-plate-recognition"
+
+
+class _FallbackPreprocessor:
+    def __init__(self):
+        # CRNN model expects grayscale images resized to 256x64.
+        cfg = ImageProcessorConfig(
+            gray_scale=True,
+            size=(256, 64),
+            rescale=1 / 255.0,
+        )
+        container = PreprocessorsContainer()
+        container["image_processor"] = ImageProcessor(cfg)
+        self.container = container
+
+
 def load_models(
-    yolo_model_path="models/lp_detector.pt",
-    ocr_model_path="hezarai/crnn-fa-64x256-license-plate-recognition"
+    yolo_model_path=DEFAULT_YOLO_MODEL_PATH,
+    ocr_model_path=DEFAULT_OCR_MODEL_PATH
 ):
     global _lp_detector, _lp_ocr
 
     if _lp_detector is None:
         print("🔵 Loading YOLO model...")
-        _lp_detector = YOLO(yolo_model_path)
+        _lp_detector = YOLO(str(yolo_model_path))
 
     if _lp_ocr is None:
         print("🔵 Loading OCR model...")
-        _lp_ocr = Model.load(ocr_model_path)
+        _lp_ocr = Model.load(str(ocr_model_path))
+        image_processor = getattr(getattr(_lp_ocr, "preprocessor", None), "image_processor", None)
+        if not callable(image_processor):
+            _lp_ocr.preprocessor = _FallbackPreprocessor().container
 
     return _lp_detector, _lp_ocr
 
